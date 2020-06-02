@@ -1,0 +1,106 @@
+#!groovy
+library identifier: "AS-jenkins-shared@stable", retriever: modernSCM([$class: 'GitSCMSource', credentialsId: 'GitHub-awsCloudOpsCJT', remote: 'https://github.com/NIT-Administrative-Systems/AS-jenkins-shared.git'])
+
+pipeline {
+    agent any
+
+    options {
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        TEAMS_WEBHOOK_URL = credentials('teams-build-webhook')
+        BUILD_ENV = "$BRANCH_NAME"
+    }
+
+    triggers {
+        pollSCM('H/10 * * * *')
+    }
+
+    stages {
+        stage ('Run Tests') {
+            agent {
+                docker {
+                    image 'node:12'
+                }
+            }
+
+            environment {
+                NODE_ENV = 'development'
+            }
+
+            steps {
+                sh 'yarn install --non-interactive'
+                sh 'yarn test'
+
+                // Install w/out devDependencies & save the node_modules for the zip
+                sh 'NODE_ENV=production yarn install --non-interactive'
+                stash includes: 'node_modules/**', name: 'node-modules', useDefaultExcludes: false
+            }
+        }
+
+        stage ('Deploy') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'qa'
+                    branch 'production'
+                }
+            }
+
+            stages {
+                stage ('Grab Dependencies') {
+                    steps {
+                        // Dependencies are in another workspace; bring them here
+                        unstash 'node-modules'
+                    }
+                }
+
+                stage ('tfenv') {
+                    steps {
+                        sh 'tfenv install'
+                        sh 'terraform -version'
+                    }
+                }
+
+                stage ('Deploy Infra & Code') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'terraform',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            dir ("iac/${BUILD_ENV}") {
+                                sh 'terraform init -no-color'
+                                sh 'terraform plan -no-color'
+                                sh 'terraform apply -no-color -auto-approve=true'
+                            }
+                        }
+                    }
+                }
+
+                stage ('Publish Secrets to SSM') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'terraform',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            // This function is part of our shared library
+                            publishSecretsToSSM('us-east-2', "iac/${BUILD_ENV}")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        cleanup {
+            sh 'rm -rf node_modules'
+            sh 'rm -rf .build/*'
+        }
+    }
+}

@@ -1,0 +1,7 @@
+terraform {
+  backend "s3" {
+    bucket = "ado-nonprod-build-tfstate"
+    # key    = "@TODO: MY_API_NAME_HERE/dev/terraform.tfstate"
+    region = "us-east-2"
+  }
+}

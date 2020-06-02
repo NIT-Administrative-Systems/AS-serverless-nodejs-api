@@ -1,0 +1,27 @@
+module "nodejs-api" {
+    source = "../modules"
+
+    environment = "dev"
+
+    account_resources_state_bucket  = "ado-nonprod-build-tfstate"
+    account_resources_state_file    = "ado-shared-resources/nonprod/terraform.tfstate"
+    account_resources_state_region  = "us-east-2"
+
+    # Do not include secret values (passwords, API tokens, etc)
+    app_env_variables = {
+      AUTH_ENV   = "test"
+      AUTH_MFA   = "true"
+      SENTRY_DSN = "TODO"
+    }
+
+    # Defined in Jenkins. Will be added as a SSM_SECRETS=name1,name2,name3... so your code can look them up.
+    app_secrets = ["AUTH_API_KEY"]
+}
+
+output "parameters" {
+  value = module.nodejs-api.parameters
+}
+
+output "api_url" {
+  value = module.nodejs-api.api_url
+}
