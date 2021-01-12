@@ -24,7 +24,7 @@
     "yayson": "^2.0.10-quickfix"
   },
   "devDependencies": {
-    "aws-sdk": "^2.670.0",
+    "aws-sdk": "^2.825.0",
     "chai": "^4.2.0",
     "chai-http": "^4.3.0",
     "cross-env": "^7.0.2",
