@@ -20,7 +20,7 @@
     "moment": "^2.24.0",
     "morgan": "^1.10.0",
     "nusso": "^2.0.0",
-    "serverless-http": "^2.4.1",
+    "serverless-http": "^3.0.2",
     "yayson": "^2.0.10-quickfix"
   },
   "devDependencies": {
