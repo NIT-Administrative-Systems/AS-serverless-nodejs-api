@@ -30,7 +30,7 @@
     "cross-env": "^7.0.2",
     "eslint": "^7.0.0",
     "eslint-config-airbnb-base": "^14.1.0",
-    "eslint-plugin-import": "^2.20.2",
+    "eslint-plugin-import": "^2.27.5",
     "faker": "^4.1.0",
     "mocha": "^7.1.1",
     "nodemon": "^2.0.2",
