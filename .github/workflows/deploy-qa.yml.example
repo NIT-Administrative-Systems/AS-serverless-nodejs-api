@@ -1,0 +1,28 @@
+name: Deploy QA
+on:
+  # schedule: # github environment will need permission to deploy from the default branch (prod) as well if using a schedule trigger
+    # - cron: "* * * * *" # UTC
+  workflow_dispatch: # manual deployment option
+  # push: # runs workflow when you push a commit or tag 
+    # branches: [ qa ]
+
+# this only allows one job to run for each env at a time
+concurrency:
+  # group: environment-${{ github.ref }}
+  group: environment-${{ github.workflow }}
+
+jobs:
+  call-deploy-workflow:
+    uses: NIT-Administrative-Systems/AS-serverless-nodejs-api/.github/workflows/reusable_deploy.yml@qa
+    with:
+      environment: qa
+      node-version: "22.x"
+      opentofu-version: .opentofu-version
+      opentofu-build-directory: "iac/qa"
+      api-lambda-build-directory: "iac/qa/build/src"
+    # secrets can't be accessed from within the reusable workflow, pass in the values of the secrets as inputs
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.TF_KEY_ADO_NONPROD }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_SECRET_ADO_NONPROD }}
+      TF_VAR_local_state_passphrase: ${{ secrets.TF_LOCAL_STATE_ENCRYPTION_KEY_2025_07 }}
+      TF_VAR_shared_state_passphrase: ${{ secrets.TF_SHARED_RESOURCES_STATE_ENCRYPTION_KEY_2025_07 }}            
