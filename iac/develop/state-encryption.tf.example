@@ -1,0 +1,90 @@
+variable "local_state_passphrase" {
+    sensitive   = true
+    type        = string
+    nullable    = false
+    description = "Passphrase for this module's state encryption"
+
+    validation {
+        condition = length(var.local_state_passphrase) == 32
+        error_message = "AES-GCM key should be 32 bytes"
+    }
+}
+
+variable "shared_state_passphrase" {
+    sensitive   = true
+    type        = string
+    nullable    = false
+    description = "Passphrase for remote data source state encryption"
+
+    validation {
+        condition = length(var.shared_state_passphrase) == 32
+        error_message = "AES-GCM key should be 32 bytes"
+    }
+}
+
+terraform {
+    encryption {
+        key_provider "pbkdf2" "local_state_passphrase" {
+            passphrase    = var.local_state_passphrase
+            key_length    = 32
+            iterations    = 600000
+            salt_length   = 32
+            hash_function = "sha512"
+        }
+
+        key_provider "pbkdf2" "shared_state_passphrase" {
+            passphrase    = var.shared_state_passphrase
+            key_length    = 32
+            iterations    = 600000
+            salt_length   = 32
+            hash_function = "sha512"
+            
+            # For this remote state key provider resource, the alias must match the remote module's LOCAL key name.
+            # For ADO Shared Resources, its local state is using this alias.
+            encrypted_metadata_alias = "ado-resource-key-2025-07"
+        }
+
+        method "aes_gcm" "local-state-encryption" {
+            keys = key_provider.pbkdf2.local_state_passphrase
+        }
+
+        method "aes_gcm" "shared-state-encryption" {
+            keys = key_provider.pbkdf2.shared_state_passphrase
+        }
+
+        method "unencrypted" "migrate" {
+            # Used as a fallback for the initial state of a previously-unencrypted project.
+            # This does not need to be included for brand-new projects that start out encrypted.
+        }
+
+        # This is YOUR module's state.
+        state {
+            method = method.aes_gcm.local-state-encryption
+
+            # Only needed for a pre-existing Terraform project, which has an unencrypted state file.
+            # Once this has run for every environment, the fallback can be removed, and the
+            # enforced = true option can be enabled.
+            fallback {
+                method = method.unencrypted.migrate
+            }
+
+            # Enable this when all envs have been moved to encrypted state. It prevents accidentally writing
+            # an unencrypted state file, if the passphrase var is unset for some reason.
+            #
+            # enforced = true
+        }
+
+        # This is THE REMOTE data source's state. It MAY have a different encryption key.
+        # It uses a default setting, but you can define multiple and pick-n-choose which method a remote state
+        # block uses, if you have several.
+        remote_state_data_sources {
+            default {
+                method = method.aes_gcm.shared-state-encryption
+
+                fallback {
+                    method = method.unencrypted.migrate
+                }
+            }
+        }
+    }
+}
