@@ -1,0 +1,98 @@
+# Reusable Workflow
+name: Reuseable Deploy Workflow
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      api-lambda-build-directory:
+        required: true
+        type: string
+      opentofu-build-directory:
+        required: true
+        type: string
+      node-version:
+        required: true
+        type: string
+      opentofu-version:
+        required: true
+        type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      TF_VAR_local_state_passphrase:
+        required: true
+      TF_VAR_shared_state_passphrase:
+        required: true
+
+jobs:
+  Deploy:
+    environment: ${{ inputs.environment }} # set github environment
+    name: Deploy IaC and Application Code
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_local_state_passphrase: ${{ secrets.TF_VAR_local_state_passphrase }}
+      TF_VAR_shared_state_passphrase: ${{ secrets.TF_VAR_shared_state_passphrase }}            
+    steps:
+      # this converts the head_ref to a variable of BRANCH_NAME
+      - uses: nelonoel/branch-name@v1.0.1
+      - uses: actions/checkout@v4
+        # due to the scheduled job, explicitly specify which branch to use
+        with:
+          ref: ${{ inputs.environment }}
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+
+      - name: Setup OpenTofu 🧱
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version_file: .opentofu-version
+
+      - name: Install Dependencies
+        run: |
+          npm ci
+
+      - name: Select Files for Application Deployment Package
+        run: |
+          mkdir -p ${{ inputs.api-lambda-build-directory }}
+          rsync -a src/**  ${{ inputs.api-lambda-build-directory }}
+          cp -a node_modules ${{ inputs.api-lambda-build-directory }}
+
+      - name: OpenTofu Init 🧱
+        run: |
+          cd ${{ inputs.opentofu-build-directory }}
+          tofu init
+
+      - name: OpenTofu Plan 🧱
+        run: |
+          cd ${{  inputs.opentofu-build-directory }}
+          tofu plan
+
+      - name: OpenTofu Apply 🧱
+        run: |
+          cd ${{  inputs.opentofu-build-directory }}
+          tofu apply -auto-approve
+
+      # - name: Publish Secrets to SSM
+      #   uses: nit-administrative-systems/aws-secrets-sync-action@v1.0.0
+      #   with:
+      #     to: ssm
+      #     region: us-east-2
+      #     tf-module-path: ${{  inputs.terraform-build-directory }}
+      #     # important! because the secret in the repo is in uppercase, the inputs.build-env must be upper case
+      #     # name of parameter (LHS) in parameters output map = name of secret value stored in GitHub
+      #     # Have to construct the JSON in the reusable workflow, doesn't work to get secrets from github environment in the calling workflow
+      #     secret-values: |
+      #       {
+      #         "EXAMPLE_SECRET": "${{ secrets.EXAMPLE_SECRET }}"
+      #       }
