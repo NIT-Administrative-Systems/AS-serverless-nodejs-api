@@ -1,0 +1,96 @@
+name: Check PR
+
+on:
+  pull_request:
+    branches: [ dev ]
+
+jobs:
+  tofu-plan:
+    runs-on: ubuntu-latest
+    env:
+      IAC_ENV: dev
+      environment: dev
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          # use cache-dependency-path option when subdir is used
+          cache-dependency-path: yarn.lock
+          cache: "yarn"
+
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          node --version
+          yarn --version
+          yarn install
+
+      - name: Select Files for Application Deployment Package and Zip
+        shell: bash
+        run: |
+          mkdir -p iac/${{ github.event.inputs.Environment }}/build
+          cp -r node_modules iac/${{ github.event.inputs.Environment }}/build
+          cp -a src/** iac/${{ github.event.inputs.Environment }}/build
+
+      - name: Setup Tofu 🧱
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version_file: .opentofu-version
+
+      - name: Tofu Format
+        id: fmt
+        run: |
+          tofu fmt -check
+
+      - name: Tofu Init 🧱
+        id: init
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_KEY_ADO_NONPROD }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_SECRET_ADO_NONPROD }}
+          TF_VAR_local_state_passphrase: ${{ secrets.TF_LOCAL_STATE_ENCRYPTION_KEY_2025_07 }}
+          TF_VAR_shared_state_passphrase: ${{ secrets.TF_SHARED_RESOURCES_STATE_ENCRYPTION_KEY_2025_07 }}
+        run: |
+          cd iac/${{ github.event.inputs.Environment }}
+          tofu init
+
+      - name: Tofu Validate
+        id: validate
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_KEY_ADO_NONPROD }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_SECRET_ADO_NONPROD }}
+          TF_VAR_local_state_passphrase: ${{ secrets.TF_LOCAL_STATE_ENCRYPTION_KEY_2025_07 }}
+          TF_VAR_shared_state_passphrase: ${{ secrets.TF_SHARED_RESOURCES_STATE_ENCRYPTION_KEY_2025_07 }}
+        run: |
+          cd iac/${{ github.event.inputs.Environment }}
+          tofu validate -no-color
+
+      - name: Tofu Plan
+        id: plan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_KEY_ADO_NONPROD }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_SECRET_ADO_NONPROD }}
+          TF_VAR_local_state_passphrase: ${{ secrets.TF_LOCAL_STATE_ENCRYPTION_KEY_2025_07 }}
+          TF_VAR_shared_state_passphrase: ${{ secrets.TF_SHARED_RESOURCES_STATE_ENCRYPTION_KEY_2025_07 }}
+        run: |
+          cd iac/${{ github.event.inputs.Environment }}
+        continue-on-error: true
+
+      - name: Update PR Comment with Plan
+        uses: robburger/terraform-pr-commenter@v1.5.0
+        if: always() && (steps.plan.outcome == 'success' || steps.plan.outcome == 'failure')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPAND_SUMMARY_DETAILS: false
+        with:
+          commenter_type: plan
+          commenter_input: ${{ format('{0}{1}', steps.plan.outputs.stdout, steps.plan.outputs.stderr) }}
+          commenter_exitcode: ${{ steps.plan.outputs.exitcode }}
+
+      - name: Tofu Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
