@@ -1,4 +1,8 @@
 # NodeJS API Template
+
+> [!WARNING]
+> This starter kit is no longer recommended. Use the [Northwestern Laravel Starter](https://laravel-starter.entapp.northwestern.edu/) to develop APIs instead.
+
 This is a [JSON:API](https://jsonapi.org/) service that can be quickly deployed to AWS. The tech stack is:
 
 - [Express](https://expressjs.com/)
